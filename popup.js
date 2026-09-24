@@ -1,4 +1,4 @@
-import { detectPage, fetchFolders, fetchPage, getBaseUrl, removeBookmark, saveBookmark } from "./lib.js";
+import { detectPage, fetchFolders, fetchPage, getBaseUrl, removeBookmark, saveBookmark, shadowgraphRepoPath } from "./lib.js";
 
 const content = document.getElementById("content");
 const account = document.getElementById("account");
@@ -142,6 +142,21 @@ function bookmarkControl(repoId, viewer) {
   return { button, picker: pickerSlot };
 }
 
+function hostLabel(url) {
+  return /^https?:\/\/(www\.)?huggingface\.co\//i.test(url) ? "Hugging Face" : "GitHub";
+}
+
+function paperLabel(paper) {
+  return paper.source === "acm" ? `ACM ${paper.id}` : `arXiv:${paper.id}`;
+}
+
+/** Owner avatar + "owner/name", linked to the repo's Shadowgraph page. */
+function repoName(repo) {
+  const avatar = repo.avatarUrl && h("img", { class: "avatar", src: repo.avatarUrl, alt: "", width: 20, height: 20 });
+  if (avatar) avatar.addEventListener("error", () => avatar.remove());
+  return h("a", { class: "name", href: repo.shadowgraphUrl, target: "_blank" }, avatar, repo.fullName);
+}
+
 function repoItem(repo, viewer, extraMeta) {
   const { button, picker } = bookmarkControl(repo.id, viewer);
   const meta = [repo.stars != null ? `★ ${formatCount(repo.stars)}` : null, extraMeta].filter(Boolean).join(" · ");
@@ -154,8 +169,8 @@ function repoItem(repo, viewer, extraMeta) {
       h(
         "div",
         { class: "row-main" },
-        h("a", { class: "name", href: repo.shadowgraphUrl, target: "_blank" }, repo.fullName),
-        meta && h("div", { class: "meta" }, meta, " · ", h("a", { href: repo.url, target: "_blank" }, "GitHub")),
+        repoName(repo),
+        h("div", { class: "meta" }, meta && `${meta} · `, h("a", { href: repo.url, target: "_blank" }, hostLabel(repo.url))),
         repo.description && h("div", { class: "desc" }, repo.description),
       ),
       button,
@@ -166,8 +181,8 @@ function repoItem(repo, viewer, extraMeta) {
 
 function renderPaper(page, { paper, repos, viewer }) {
   const title = paper.shadowgraphUrl
-    ? h("a", { href: paper.shadowgraphUrl, target: "_blank" }, paper.title ?? `arXiv:${paper.id}`)
-    : paper.title ?? `arXiv:${paper.id}`;
+    ? h("a", { href: paper.shadowgraphUrl, target: "_blank" }, paper.title ?? paperLabel(paper))
+    : paper.title ?? paperLabel(paper);
   content.replaceChildren(
     h("h1", {}, title),
     h("h2", {}, repos.length === 1 ? "1 citing repo" : `${repos.length} citing repos`),
@@ -200,7 +215,7 @@ function renderRepo({ repo, similar, mentions, viewer }) {
       h(
         "div",
         { class: "row-main" },
-        h("a", { class: "name", href: repo.shadowgraphUrl, target: "_blank" }, repo.fullName),
+        repoName(repo),
         repo.stars != null && h("div", { class: "meta" }, `★ ${formatCount(repo.stars)}`),
       ),
       button,
@@ -237,18 +252,18 @@ const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 const page = tab?.url ? detectPage(tab.url) : null;
 
 if (!page) {
-  setMessage("Open an arXiv paper or a GitHub repo.");
+  setMessage("Open an arXiv or ACM paper, or a GitHub or Hugging Face repo.");
 } else {
   try {
     const { ok, status, body } = await fetchPage(page);
     if (ok) {
       renderAccount(body.viewer);
-      if (page.kind === "arxiv") renderPaper(page, body);
+      if (page.kind === "paper") renderPaper(page, body);
       else renderRepo(body);
-    } else if (status === 404 && page.kind === "github") {
+    } else if (status === 404 && page.kind === "repo") {
       setMessage(
         "Not on Shadowgraph yet. ",
-        h("a", { href: `${baseUrl}/${page.owner}/${page.name}`, target: "_blank" }, "Add it"),
+        h("a", { href: `${baseUrl}${shadowgraphRepoPath(page)}`, target: "_blank" }, "Add it"),
       );
     } else {
       setMessage(`Couldn't load (${status}).`);

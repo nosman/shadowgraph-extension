@@ -64,6 +64,7 @@ li:hover { background: var(--hover); }
 .row { display: flex; gap: 8px; align-items: flex-start; }
 .row-main { flex: 1; min-width: 0; }
 .name { font-weight: 600; overflow-wrap: anywhere; }
+.avatar { width: 20px; height: 20px; border-radius: 4px; vertical-align: -5px; margin-right: 6px; background: var(--hover); }
 .meta { color: var(--muted); font-size: 12px; }
 .desc {
   color: var(--muted);
