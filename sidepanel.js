@@ -146,6 +146,21 @@ function hostLabel(url) {
   return /^https?:\/\/(www\.)?huggingface\.co\//i.test(url) ? "Hugging Face" : "GitHub";
 }
 
+/** Opens a repo on GitHub/Hugging Face in the current tab, so the panel follows to that repo. */
+function hostLink(url) {
+  return h(
+    "a",
+    {
+      href: url,
+      onclick: (event) => {
+        event.preventDefault();
+        chrome.tabs.update({ url });
+      },
+    },
+    hostLabel(url),
+  );
+}
+
 function paperLabel(paper) {
   return paper.source === "acm" ? `ACM ${paper.id}` : `arXiv:${paper.id}`;
 }
@@ -170,7 +185,7 @@ function repoItem(repo, viewer, extraMeta) {
         "div",
         { class: "row-main" },
         repoName(repo),
-        h("div", { class: "meta" }, meta && `${meta} · `, h("a", { href: repo.url, target: "_blank" }, hostLabel(repo.url))),
+        h("div", { class: "meta" }, meta && `${meta} · `, hostLink(repo.url)),
         repo.description && h("div", { class: "desc" }, repo.description),
       ),
       button,
@@ -248,14 +263,37 @@ function renderRepo({ repo, similar, mentions, viewer }) {
   chrome.storage.local.get("repoTab").then(({ repoTab }) => select(panels[repoTab] ? repoTab : "similar"));
 }
 
-const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-const page = tab?.url ? detectPage(tab.url) : null;
+// The panel stays open across navigations and tab switches, so it re-renders
+// for whatever the active tab in its own window is showing.
+const windowId = (await chrome.windows.getCurrent()).id;
+let shownKey = null;
+let loadSeq = 0;
 
-if (!page) {
-  setMessage("Open an arXiv or ACM paper, or a GitHub or Hugging Face repo.");
-} else {
+function pageKey(page) {
+  return page ? JSON.stringify(page) : "none";
+}
+
+/**
+ * Renders the panel for `url`. Skips a reload when the page is the same
+ * paper/repo already shown (e.g. browsing a repo's files) unless `force` —
+ * set on tab switches, so returning from signing in on the site picks up
+ * the new bookmark state. A slower, older load never overwrites a newer one.
+ */
+async function load(url, force = false) {
+  const page = url ? detectPage(url) : null;
+  const key = pageKey(page);
+  if (!force && key === shownKey) return;
+  shownKey = key;
+  const seq = ++loadSeq;
+
+  if (!page) {
+    setMessage("Open an arXiv or ACM paper, or a GitHub or Hugging Face repo.");
+    return;
+  }
+  setMessage("Loading…");
   try {
     const { ok, status, body } = await fetchPage(page);
+    if (seq !== loadSeq) return;
     if (ok) {
       renderAccount(body.viewer);
       if (page.kind === "paper") renderPaper(page, body);
@@ -269,6 +307,21 @@ if (!page) {
       setMessage(`Couldn't load (${status}).`);
     }
   } catch {
-    setMessage("Couldn't reach Shadowgraph.");
+    if (seq === loadSeq) setMessage("Couldn't reach Shadowgraph.");
   }
 }
+
+async function loadActiveTab(force) {
+  const [tab] = await chrome.tabs.query({ active: true, windowId });
+  await load(tab?.url, force);
+}
+
+chrome.tabs.onActivated.addListener((info) => {
+  if (info.windowId === windowId) loadActiveTab(true);
+});
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  if (!tab.active || tab.windowId !== windowId) return;
+  if (changeInfo.url || changeInfo.status === "complete") load(tab.url);
+});
+
+loadActiveTab(true);

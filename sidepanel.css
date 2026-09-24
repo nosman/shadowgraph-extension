@@ -22,8 +22,6 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  width: 400px;
-  max-height: 580px;
   background: var(--bg);
   color: var(--fg);
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -32,6 +30,10 @@ body.options { width: auto; padding: 16px; display: flex; gap: 8px; align-items:
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
 header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
   display: flex;
   justify-content: space-between;
   align-items: center;

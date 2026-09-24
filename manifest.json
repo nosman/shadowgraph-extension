@@ -10,11 +10,11 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
-    }
+    },
+    "default_title": "Open Shadowgraph"
   },
   "background": {
     "service_worker": "background.js",
@@ -22,7 +22,8 @@
   },
   "options_page": "options.html",
   "permissions": [
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://arxiv.org/*",
@@ -32,5 +33,8 @@
     "https://dl.acm.org/*",
     "https://shadowgraph.io/*",
     "http://localhost:3000/*"
-  ]
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
 }

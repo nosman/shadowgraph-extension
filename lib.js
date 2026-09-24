@@ -1,4 +1,4 @@
-// Shared by background.js, popup.js and options.js.
+// Shared by background.js, sidepanel.js and options.js.
 
 export const DEFAULT_BASE_URL = "https://shadowgraph.io";
 
@@ -32,6 +32,21 @@ const HF_RESERVED = new Set([
 const HF_OWNER = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,95}$/;
 const HF_NAME = /^[\w.-]{1,96}$/;
 const HF_TYPE_PREFIXES = { datasets: "dataset", spaces: "space" };
+
+// Sites the side panel is enabled on (see background.js) — every host
+// detectPage recognizes. Deliberately per-site, not per-page: Chrome closes
+// the panel on a tab where it gets disabled and won't reopen it without a
+// click, so browsing to e.g. github.com/trending shouldn't close it.
+const SUPPORTED_HOSTS = new Set([...ARXIV_HOSTS, "dl.acm.org", "github.com", "huggingface.co"]);
+
+/** Whether `url` is on a site the extension works on. Undefined for a tab on any other site: without the "tabs" permission, Chrome only exposes a tab's URL on hosts the extension has permission for. */
+export function isSupportedSite(url) {
+  try {
+    return SUPPORTED_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 function arxivIdFrom(raw) {
   return raw?.match(NEW_STYLE_ID)?.[1] ?? raw?.match(OLD_STYLE_ID)?.[1] ?? null;
@@ -129,4 +144,41 @@ export function removeBookmark(repositoryId) {
     method: "DELETE",
     body: JSON.stringify({ repositoryId }),
   });
+}
+
+// Views of supported pages made while signed out, kept in the extension's own
+// storage (it can't reach shadowgraph.io's localStorage from other sites) and
+// uploaded to /api/extension/views once a request comes back signed in.
+// Same item shape as the site's own localStorage queue (PendingView).
+const PENDING_KEY = "pendingViews";
+const MAX_PENDING = 100;
+
+function viewKey(view) {
+  return view.repositoryId != null ? `repo:${view.repositoryId}` : `paper:${view.paperSource}:${view.paperId}`;
+}
+
+/** The view to remember for a page the API resolved, or null (a paper nobody cites isn't tracked). */
+export function viewFor(page, body) {
+  if (page.kind === "repo") return { repositoryId: body.repo.id };
+  return body.repos.length > 0 ? { paperSource: body.paper.source, paperId: body.paper.id } : null;
+}
+
+export async function queuePendingView(view) {
+  const entry = { ...view, viewedAt: Date.now() };
+  const key = viewKey(entry);
+  const { [PENDING_KEY]: pending = [] } = await chrome.storage.local.get(PENDING_KEY);
+  const next = [entry, ...pending.filter((v) => viewKey(v) !== key)].slice(0, MAX_PENDING);
+  await chrome.storage.local.set({ [PENDING_KEY]: next });
+}
+
+/** Uploads queued views; they stay queued (for the next attempt) unless the server accepts them. */
+export async function uploadPendingViews() {
+  const { [PENDING_KEY]: pending = [] } = await chrome.storage.local.get(PENDING_KEY);
+  if (pending.length === 0) return;
+  const { ok } = await request("/api/extension/views", { method: "POST", body: JSON.stringify({ views: pending }) });
+  if (!ok) return;
+  // Keep anything re-queued while the upload was in flight.
+  const sentAt = new Map(pending.map((v) => [viewKey(v), v.viewedAt]));
+  const { [PENDING_KEY]: latest = [] } = await chrome.storage.local.get(PENDING_KEY);
+  await chrome.storage.local.set({ [PENDING_KEY]: latest.filter((v) => (sentAt.get(viewKey(v)) ?? -1) < v.viewedAt) });
 }
