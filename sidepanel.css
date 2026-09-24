@@ -136,9 +136,10 @@ table.mentions th {
   padding: 6px 4px;
   border-bottom: 1px solid var(--border);
 }
-table.mentions th:first-child, table.mentions td:first-child { width: 22px; padding-left: 12px; }
+/* border-box: 12px gutter + 14px icon + 4px, plus the message cell's own 4px = an 8px gap. */
+table.mentions th:first-child, table.mentions td:first-child { width: 30px; padding-left: 12px; padding-right: 4px; }
 table.mentions th:nth-child(3) { width: 44px; }
-table.mentions th:nth-child(4) { width: 96px; padding-right: 12px; }
+table.mentions th:nth-child(4) { width: 96px; padding-right: 12px; text-align: right; }
 table.mentions td { padding: 5px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
 table.mentions tr:hover td { background: var(--hover); }
 .message { min-width: 0; }
@@ -154,8 +155,10 @@ table.mentions tr:hover td { background: var(--hover); }
 }
 .mention-snippet { display: block; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.num { font-variant-numeric: tabular-nums; }
-td.date { color: var(--muted); white-space: nowrap; padding-right: 12px; }
-.source-icon { display: block; width: 13px; height: 13px; margin-top: 2px; border-radius: 3px; }
+/* table.mentions-qualified to outrank `table.mentions td`'s padding. */
+table.mentions td.date { color: var(--muted); white-space: nowrap; padding-right: 12px; text-align: right; }
+/* margin-top centers it on the first (title) line: 12px text at line-height 1.4. */
+.source-icon { display: block; width: 14px; height: 14px; margin-top: 1.5px; border-radius: 3px; }
 .source-icon.placeholder { background: var(--hover); }
 .show-more { display: block; margin: 8px auto 12px; }
 .recent-icon { width: 20px; height: 20px; vertical-align: -5px; margin-right: 6px; color: var(--muted); }
