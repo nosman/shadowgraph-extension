@@ -207,16 +207,167 @@ function renderPaper(page, { paper, repos, viewer }) {
   );
 }
 
-function mentionItem(m) {
-  const source = { hackernews: "Hacker News", reddit: "Reddit", twitter: "X" }[m.source];
-  const points = m.source === "twitter" ? `${m.points} likes` : `${m.points} points`;
+// Same source icons as the repo page's SocialMentionsTable: HN's favicon
+// (via Google's favicon service, like the site's Favicon component) and
+// Tabler's brand-reddit / brand-x outlines, drawn inline so they take the
+// text color in both themes. Tabler Icons, MIT License.
+const TABLER_PATHS = {
+  reddit: [
+    ["M12 8c2.648 0 5.028 .826 6.675 2.14a2.5 2.5 0 0 1 2.326 4.36c0 3.59 -4.03 6.5 -9 6.5c-4.875 0 -8.845 -2.8 -9 -6.294l-1 -.206a2.5 2.5 0 0 1 2.326 -4.36c1.646 -1.313 4.026 -2.14 6.674 -2.14l.999 0"],
+    ["M12 8l1 -5l6 1"],
+    ["M18 4a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"],
+    ["M8.5 13a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0", "currentColor"],
+    ["M14.5 13a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0", "currentColor"],
+    ["M10 17c.667 .333 1.333 .5 2 .5s1.333 -.167 2 -.5"],
+  ],
+  twitter: [["M4 4l11.733 16h4.267l-11.733 -16l-4.267 0"], ["M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"]],
+};
+const SOURCE_LABELS = { hackernews: "Hacker News", twitter: "X", reddit: "Reddit" };
+
+function sourceIcon(source) {
+  if (source === "hackernews") {
+    const img = h("img", {
+      class: "source-icon",
+      src: "https://www.google.com/s2/favicons?sz=32&domain=news.ycombinator.com",
+      alt: SOURCE_LABELS.hackernews,
+    });
+    img.addEventListener("error", () => img.replaceWith(h("span", { class: "source-icon placeholder" })));
+    return img;
+  }
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "source-icon");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", SOURCE_LABELS[source]);
+  for (const [d, fill] of TABLER_PATHS[source]) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", fill ?? "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.75");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
+  return svg;
+}
+
+function mentionRow(m) {
+  // `content` is the headline in the repo page's own rows (toMentionRows);
+  // servers deployed before that sent it as `title`.
+  const headline = m.content ?? m.title;
   return h(
-    "li",
+    "tr",
     {},
-    h("a", { class: "name", href: m.url, target: "_blank" }, m.title),
-    m.snippet && h("div", { class: "snippet" }, m.snippet),
-    h("div", { class: "meta" }, `${source} · ${points} · ${formatDate(m.postedAt)}`),
+    h("td", {}, sourceIcon(m.source)),
+    h(
+      "td",
+      { class: "message" },
+      h(
+        "a",
+        { class: "mention-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
+        h("span", { class: "mention-title" }, headline),
+        m.snippet && h("span", { class: "mention-snippet" }, m.snippet),
+      ),
+    ),
+    h("td", { class: "num" }, m.points.toLocaleString()),
+    h("td", { class: "date" }, formatDate(m.postedAt)),
   );
+}
+
+/** Small segmented control — one selected option, `onChange(value)` on click. */
+function segmented(options, value, onChange) {
+  const group = h("div", { class: "segmented" });
+  const render = (selected) => {
+    group.replaceChildren(
+      ...options.map(([key, label]) =>
+        h(
+          "button",
+          {
+            type: "button",
+            "aria-pressed": String(key === selected),
+            onclick: () => {
+              render(key);
+              onChange(key);
+            },
+          },
+          label,
+        ),
+      ),
+    );
+  };
+  render(value);
+  return group;
+}
+
+/** The repo page's "See what people are saying" table, sized for the panel: source filter (offering only sources that have mentions, and only when there's more than one), sort, and one row per mention. */
+function mentionsView(mentions) {
+  if (mentions.length === 0) return h("p", { class: "muted" }, "No mentions found.");
+  let source = "all";
+  let sort = "chronological";
+  const body = h("tbody");
+  const render = () => {
+    const rows = (source === "all" ? mentions : mentions.filter((m) => m.source === source))
+      .slice()
+      .sort((a, b) => (sort === "points" ? b.points - a.points : new Date(b.postedAt) - new Date(a.postedAt)));
+    body.replaceChildren(...rows.map(mentionRow));
+  };
+  render();
+
+  const sources = new Set(mentions.map((m) => m.source));
+  return h(
+    "div",
+    {},
+    h(
+      "div",
+      { class: "controls" },
+      sources.size > 1 &&
+        segmented(
+          [["all", "All sources"], ...Object.entries(SOURCE_LABELS).filter(([key]) => sources.has(key))],
+          source,
+          (value) => {
+            source = value;
+            render();
+          },
+        ),
+      segmented(
+        [
+          ["chronological", "Newest first"],
+          ["points", "Most points"],
+        ],
+        sort,
+        (value) => {
+          sort = value;
+          render();
+        },
+      ),
+    ),
+    h(
+      "table",
+      { class: "mentions" },
+      h("thead", {}, h("tr", {}, h("th", { "aria-label": "Source" }), h("th", {}, "Message"), h("th", {}, "Score"), h("th", {}, "Date"))),
+      body,
+    ),
+  );
+}
+
+const SIMILAR_PAGE_SIZE = 10;
+
+/** Similar repos, SIMILAR_PAGE_SIZE at a time. */
+function similarView(similar, viewer) {
+  if (similar.length === 0) return h("p", { class: "muted" }, "No similar repos found.");
+  const list = h("ul");
+  const more = h("button", { type: "button", class: "button show-more" }, "Show more");
+  let shown = 0;
+  const showMore = () => {
+    list.append(...similar.slice(shown, shown + SIMILAR_PAGE_SIZE).map((r) => repoItem(r, viewer)));
+    shown += SIMILAR_PAGE_SIZE;
+    more.hidden = shown >= similar.length;
+  };
+  more.addEventListener("click", showMore);
+  showMore();
+  return h("div", {}, list, more);
 }
 
 function renderRepo({ repo, similar, mentions, viewer }) {
@@ -239,12 +390,8 @@ function renderRepo({ repo, similar, mentions, viewer }) {
   );
 
   const panels = {
-    similar: similar.length
-      ? h("ul", {}, similar.map((r) => repoItem(r, viewer)))
-      : h("p", { class: "muted" }, "No similar repos found."),
-    mentions: mentions.length
-      ? h("ul", {}, mentions.map(mentionItem))
-      : h("p", { class: "muted" }, "No mentions found."),
+    similar: similarView(similar, viewer),
+    mentions: mentionsView(mentions),
   };
   const panel = h("div");
   const tabs = h("div", { class: "tabs", role: "tablist" });

@@ -104,4 +104,48 @@ li:hover { background: var(--hover); }
 }
 .picker button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .error { color: var(--danger); font-size: 12px; margin-top: 4px; }
-.snippet { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 12px 4px; }
+.segmented { display: inline-flex; padding: 2px; border-radius: 6px; background: var(--hover); }
+.segmented button {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.segmented button[aria-pressed="true"] { background: var(--bg); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+table.mentions { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+table.mentions th {
+  position: sticky;
+  top: 41px;
+  background: var(--bg);
+  text-align: left;
+  font-weight: 600;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+table.mentions th:first-child, table.mentions td:first-child { width: 22px; padding-left: 12px; }
+table.mentions th:nth-child(3) { width: 44px; }
+table.mentions th:nth-child(4) { width: 96px; padding-right: 12px; }
+table.mentions td { padding: 5px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.mentions tr:hover td { background: var(--hover); }
+.message { min-width: 0; }
+.mention-link { display: block; color: inherit; }
+.mention-link:hover .mention-title { text-decoration: underline; }
+.mention-link:hover { text-decoration: none; }
+.mention-title {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mention-snippet { display: block; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.num { font-variant-numeric: tabular-nums; }
+td.date { color: var(--muted); white-space: nowrap; padding-right: 12px; }
+.source-icon { display: block; width: 13px; height: 13px; margin-top: 2px; border-radius: 3px; }
+.source-icon.placeholder { background: var(--hover); }
+.show-more { display: block; margin: 8px auto 12px; }

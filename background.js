@@ -43,7 +43,7 @@ async function uploadIfOnShadowgraph(url) {
 }
 
 // Badge on the toolbar icon: how many repos cite the paper, or how many
-// similar repos Shadowgraph has for the repo, in the current tab.
+// HN/Reddit/X mentions the repo has, in the current tab.
 async function updateBadge(tabId, url) {
   const page = detectPage(url);
   if (!page) {
@@ -53,7 +53,7 @@ async function updateBadge(tabId, url) {
   try {
     const { ok, body } = await fetchPage(page);
     if (ok) await trackView(page, body);
-    const count = !ok ? 0 : page.kind === "paper" ? body.repos.length : body.similar.length;
+    const count = !ok ? 0 : page.kind === "paper" ? body.repos.length : body.mentions.length;
     await chrome.action.setBadgeBackgroundColor({ tabId, color: "#2f9e44" });
     await chrome.action.setBadgeText({ tabId, text: count > 0 ? String(Math.min(count, 99)) : "" });
   } catch {
