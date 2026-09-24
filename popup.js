@@ -1,0 +1,259 @@
+import { detectPage, fetchFolders, fetchPage, getBaseUrl, removeBookmark, saveBookmark } from "./lib.js";
+
+const content = document.getElementById("content");
+const account = document.getElementById("account");
+const BOOKMARK_PATH = "M18 7v14l-6-4-6 4V7a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4z";
+
+const baseUrl = await getBaseUrl();
+document.getElementById("home").href = baseUrl;
+
+/** Tiny element builder: h("a", { href }, "text", childNode). Strings become text nodes, never HTML. */
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value == null || value === false) continue;
+    if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+    else el.setAttribute(key, value === true ? "" : value);
+  }
+  for (const child of children.flat()) {
+    if (child != null && child !== false) el.append(child);
+  }
+  return el;
+}
+
+function bookmarkIcon(filled) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", BOOKMARK_PATH);
+  path.setAttribute("fill", filled ? "currentColor" : "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.append(path);
+  return svg;
+}
+
+function formatCount(n) {
+  if (n == null) return null;
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function setMessage(...children) {
+  content.replaceChildren(h("p", { class: "muted" }, ...children));
+}
+
+function renderAccount(viewer) {
+  account.replaceChildren(
+    viewer.signedIn
+      ? h("a", { href: `${baseUrl}/folders`, target: "_blank" }, "Folders")
+      : h("a", { href: `${baseUrl}/login`, target: "_blank" }, "Sign in"),
+  );
+}
+
+/** Folder tree flattened depth-first under the root, with indented labels for a <select>. */
+function flattenFolders(folders, rootId) {
+  const children = new Map();
+  for (const f of folders) {
+    const list = children.get(f.parentId) ?? [];
+    list.push(f);
+    children.set(f.parentId, list);
+  }
+  const out = [];
+  const walk = (folder, depth) => {
+    out.push({ id: folder.id, label: `${"   ".repeat(depth)}${folder.name}` });
+    for (const child of children.get(folder.id) ?? []) walk(child, depth + 1);
+  };
+  const root = folders.find((f) => f.id === rootId);
+  if (root) walk(root, 0);
+  return out;
+}
+
+/** Bookmark toggle for one repo: signed out it links to sign-in; unsaved it opens a folder picker; saved it unsaves. */
+function bookmarkControl(repoId, viewer) {
+  const wrapper = h("div");
+  if (!viewer.signedIn) {
+    const link = h("a", { class: "bookmark", href: `${baseUrl}/login`, target: "_blank", title: "Sign in to save" });
+    link.append(bookmarkIcon(false));
+    wrapper.append(link);
+    return { button: wrapper, picker: h("div") };
+  }
+
+  const pickerSlot = h("div");
+  let saved = viewer.savedRepoIds.includes(repoId);
+  const button = h("button", { class: "bookmark", type: "button" });
+  const render = () => {
+    button.setAttribute("aria-pressed", String(saved));
+    button.title = saved ? "Remove from folders" : "Save to folder";
+    button.replaceChildren(bookmarkIcon(saved));
+  };
+  render();
+
+  const showError = (text) => pickerSlot.replaceChildren(h("div", { class: "error" }, text));
+
+  button.addEventListener("click", async () => {
+    if (saved) {
+      button.disabled = true;
+      const { ok } = await removeBookmark(repoId);
+      button.disabled = false;
+      if (!ok) return showError("Couldn't remove.");
+      saved = false;
+      pickerSlot.replaceChildren();
+      render();
+      return;
+    }
+    if (pickerSlot.firstChild) {
+      pickerSlot.replaceChildren();
+      return;
+    }
+
+    button.disabled = true;
+    const { ok, body } = await fetchFolders(repoId);
+    button.disabled = false;
+    if (!ok) return showError("Couldn't load folders.");
+
+    const options = flattenFolders(body.folders, body.rootFolderId);
+    const { lastFolderId } = await chrome.storage.local.get("lastFolderId");
+    const initial = options.some((o) => o.id === lastFolderId) ? lastFolderId : body.rootFolderId;
+    const select = h("select", {}, options.map((o) => h("option", { value: o.id, selected: o.id === initial }, o.label)));
+    const save = h("button", { type: "button", class: "primary" }, "Save");
+    const cancel = h("button", { type: "button", onclick: () => pickerSlot.replaceChildren() }, "Cancel");
+    save.addEventListener("click", async () => {
+      const folderId = Number(select.value);
+      save.disabled = true;
+      const result = await saveBookmark(repoId, folderId);
+      if (!result.ok) {
+        save.disabled = false;
+        return pickerSlot.append(h("div", { class: "error" }, "Couldn't save."));
+      }
+      await chrome.storage.local.set({ lastFolderId: folderId });
+      saved = true;
+      pickerSlot.replaceChildren();
+      render();
+    });
+    pickerSlot.replaceChildren(h("div", { class: "picker" }, select, save, cancel));
+  });
+
+  return { button, picker: pickerSlot };
+}
+
+function repoItem(repo, viewer, extraMeta) {
+  const { button, picker } = bookmarkControl(repo.id, viewer);
+  const meta = [repo.stars != null ? `★ ${formatCount(repo.stars)}` : null, extraMeta].filter(Boolean).join(" · ");
+  return h(
+    "li",
+    {},
+    h(
+      "div",
+      { class: "row" },
+      h(
+        "div",
+        { class: "row-main" },
+        h("a", { class: "name", href: repo.shadowgraphUrl, target: "_blank" }, repo.fullName),
+        meta && h("div", { class: "meta" }, meta, " · ", h("a", { href: repo.url, target: "_blank" }, "GitHub")),
+        repo.description && h("div", { class: "desc" }, repo.description),
+      ),
+      button,
+    ),
+    picker,
+  );
+}
+
+function renderPaper(page, { paper, repos, viewer }) {
+  const title = paper.shadowgraphUrl
+    ? h("a", { href: paper.shadowgraphUrl, target: "_blank" }, paper.title ?? `arXiv:${paper.id}`)
+    : paper.title ?? `arXiv:${paper.id}`;
+  content.replaceChildren(
+    h("h1", {}, title),
+    h("h2", {}, repos.length === 1 ? "1 citing repo" : `${repos.length} citing repos`),
+    repos.length === 0
+      ? h("p", { class: "muted" }, "No repos found.")
+      : h("ul", {}, repos.map((r) => repoItem(r, viewer))),
+  );
+}
+
+function mentionItem(m) {
+  const source = { hackernews: "Hacker News", reddit: "Reddit", twitter: "X" }[m.source];
+  const points = m.source === "twitter" ? `${m.points} likes` : `${m.points} points`;
+  return h(
+    "li",
+    {},
+    h("a", { class: "name", href: m.url, target: "_blank" }, m.title),
+    m.snippet && h("div", { class: "snippet" }, m.snippet),
+    h("div", { class: "meta" }, `${source} · ${points} · ${formatDate(m.postedAt)}`),
+  );
+}
+
+function renderRepo({ repo, similar, mentions, viewer }) {
+  const { button, picker } = bookmarkControl(repo.id, viewer);
+  const current = h(
+    "div",
+    { class: "current" },
+    h(
+      "div",
+      { class: "row", style: "padding: 0 12px" },
+      h(
+        "div",
+        { class: "row-main" },
+        h("a", { class: "name", href: repo.shadowgraphUrl, target: "_blank" }, repo.fullName),
+        repo.stars != null && h("div", { class: "meta" }, `★ ${formatCount(repo.stars)}`),
+      ),
+      button,
+    ),
+    h("div", { style: "padding: 0 12px" }, picker),
+  );
+
+  const panels = {
+    similar: similar.length
+      ? h("ul", {}, similar.map((r) => repoItem(r, viewer)))
+      : h("p", { class: "muted" }, "No similar repos found."),
+    mentions: mentions.length
+      ? h("ul", {}, mentions.map(mentionItem))
+      : h("p", { class: "muted" }, "No mentions found."),
+  };
+  const panel = h("div");
+  const tabs = h("div", { class: "tabs", role: "tablist" });
+  const select = async (key) => {
+    for (const b of tabs.children) b.setAttribute("aria-selected", String(b.dataset.key === key));
+    panel.replaceChildren(panels[key]);
+    await chrome.storage.local.set({ repoTab: key });
+  };
+  for (const [key, label] of [
+    ["similar", `Similar (${similar.length})`],
+    ["mentions", `Mentions (${mentions.length})`],
+  ]) {
+    tabs.append(h("button", { type: "button", role: "tab", "data-key": key, onclick: () => select(key) }, label));
+  }
+  content.replaceChildren(current, tabs, panel);
+  chrome.storage.local.get("repoTab").then(({ repoTab }) => select(panels[repoTab] ? repoTab : "similar"));
+}
+
+const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+const page = tab?.url ? detectPage(tab.url) : null;
+
+if (!page) {
+  setMessage("Open an arXiv paper or a GitHub repo.");
+} else {
+  try {
+    const { ok, status, body } = await fetchPage(page);
+    if (ok) {
+      renderAccount(body.viewer);
+      if (page.kind === "arxiv") renderPaper(page, body);
+      else renderRepo(body);
+    } else if (status === 404 && page.kind === "github") {
+      setMessage(
+        "Not on Shadowgraph yet. ",
+        h("a", { href: `${baseUrl}/${page.owner}/${page.name}`, target: "_blank" }, "Add it"),
+      );
+    } else {
+      setMessage(`Couldn't load (${status}).`);
+    }
+  } catch {
+    setMessage("Couldn't reach Shadowgraph.");
+  }
+}
