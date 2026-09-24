@@ -1,4 +1,15 @@
-import { detectPage, fetchFolders, fetchPage, getBaseUrl, removeBookmark, saveBookmark, shadowgraphRepoPath } from "./lib.js";
+import {
+  detectPage,
+  fetchFolders,
+  fetchPage,
+  fetchRecentlyViewed,
+  getBaseUrl,
+  readPendingViews,
+  removeBookmark,
+  saveBookmark,
+  shadowgraphRepoPath,
+  uploadPendingViews,
+} from "./lib.js";
 
 const content = document.getElementById("content");
 const account = document.getElementById("account");
@@ -45,6 +56,7 @@ function formatDate(iso) {
 }
 
 function setMessage(...children) {
+  content.classList.remove("split");
   content.replaceChildren(h("p", { class: "muted" }, ...children));
 }
 
@@ -198,6 +210,7 @@ function renderPaper(page, { paper, repos, viewer }) {
   const title = paper.shadowgraphUrl
     ? h("a", { href: paper.shadowgraphUrl, target: "_blank" }, paper.title ?? paperLabel(paper))
     : paper.title ?? paperLabel(paper);
+  content.classList.remove("split");
   content.replaceChildren(
     h("h1", {}, title),
     h("h2", {}, repos.length === 1 ? "1 citing repo" : `${repos.length} citing repos`),
@@ -301,9 +314,12 @@ function segmented(options, value, onChange) {
   return group;
 }
 
-/** The repo page's "See what people are saying" table, sized for the panel: source filter (offering only sources that have mentions, and only when there's more than one), sort, and one row per mention. */
-function mentionsView(mentions) {
-  if (mentions.length === 0) return h("p", { class: "muted" }, "No mentions found.");
+/** The top half of a repo's split view: the repo page's "See what people are saying" table, sized for the panel — source filter (offering only sources that have mentions, and only when there's more than one), sort, and one row per mention. */
+function mentionsSection(mentions) {
+  const heading = h("h2", {}, `Mentions (${mentions.length})`);
+  if (mentions.length === 0) {
+    return h("section", { class: "split-section empty" }, h("div", { class: "section-head" }, heading, h("span", { class: "muted" }, "None found")));
+  }
   let source = "all";
   let sort = "chronological";
   const body = h("tbody");
@@ -317,11 +333,12 @@ function mentionsView(mentions) {
 
   const sources = new Set(mentions.map((m) => m.source));
   return h(
-    "div",
-    {},
+    "section",
+    { class: "split-section" },
     h(
       "div",
-      { class: "controls" },
+      { class: "section-head" },
+      heading,
       sources.size > 1 &&
         segmented(
           [["all", "All sources"], ...Object.entries(SOURCE_LABELS).filter(([key]) => sources.has(key))],
@@ -344,19 +361,27 @@ function mentionsView(mentions) {
       ),
     ),
     h(
-      "table",
-      { class: "mentions" },
-      h("thead", {}, h("tr", {}, h("th", { "aria-label": "Source" }), h("th", {}, "Message"), h("th", {}, "Score"), h("th", {}, "Date"))),
-      body,
+      "div",
+      { class: "section-body" },
+      h(
+        "table",
+        { class: "mentions" },
+        h("thead", {}, h("tr", {}, h("th", { "aria-label": "Source" }), h("th", {}, "Message"), h("th", {}, "Score"), h("th", {}, "Date"))),
+        body,
+      ),
     ),
   );
 }
 
 const SIMILAR_PAGE_SIZE = 10;
 
-/** Similar repos, SIMILAR_PAGE_SIZE at a time. */
-function similarView(similar, viewer) {
-  if (similar.length === 0) return h("p", { class: "muted" }, "No similar repos found.");
+/** The bottom half of a repo's split view: similar repos, SIMILAR_PAGE_SIZE at a time. */
+function similarSection(similar, viewer) {
+  const heading = h("div", { class: "section-head" }, h("h2", {}, `Similar repos (${similar.length})`));
+  if (similar.length === 0) {
+    heading.append(h("span", { class: "muted" }, "None found"));
+    return h("section", { class: "split-section empty" }, heading);
+  }
   const list = h("ul");
   const more = h("button", { type: "button", class: "button show-more" }, "Show more");
   let shown = 0;
@@ -367,7 +392,7 @@ function similarView(similar, viewer) {
   };
   more.addEventListener("click", showMore);
   showMore();
-  return h("div", {}, list, more);
+  return h("section", { class: "split-section" }, heading, h("div", { class: "section-body" }, list, more));
 }
 
 function renderRepo({ repo, similar, mentions, viewer }) {
@@ -388,27 +413,139 @@ function renderRepo({ repo, similar, mentions, viewer }) {
     ),
     h("div", { style: "padding: 0 12px" }, picker),
   );
-
-  const panels = {
-    similar: similarView(similar, viewer),
-    mentions: mentionsView(mentions),
-  };
-  const panel = h("div");
-  const tabs = h("div", { class: "tabs", role: "tablist" });
-  const select = async (key) => {
-    for (const b of tabs.children) b.setAttribute("aria-selected", String(b.dataset.key === key));
-    panel.replaceChildren(panels[key]);
-    await chrome.storage.local.set({ repoTab: key });
-  };
-  for (const [key, label] of [
-    ["similar", `Similar (${similar.length})`],
-    ["mentions", `Mentions (${mentions.length})`],
-  ]) {
-    tabs.append(h("button", { type: "button", role: "tab", "data-key": key, onclick: () => select(key) }, label));
-  }
-  content.replaceChildren(current, tabs, panel);
-  chrome.storage.local.get("repoTab").then(({ repoTab }) => select(panels[repoTab] ? repoTab : "similar"));
+  content.classList.add("split");
+  content.replaceChildren(current, mentionsSection(mentions), similarSection(similar, viewer));
 }
+
+function formatAgo(iso) {
+  const minutes = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function paperIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "recent-icon");
+  // Tabler's file-text outline, same icon as the homepage's Recently viewed (MIT License).
+  for (const d of ["M14 3v4a1 1 0 0 0 1 1h4", "M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z", "M9 9l1 0", "M9 13l6 0", "M9 17l6 0"]) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.5");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
+  return svg;
+}
+
+/** Opens `url` in the current tab — the panel then follows it to that repo or paper. */
+function openHere(url) {
+  return (event) => {
+    event.preventDefault();
+    chrome.tabs.update({ url });
+  };
+}
+
+/**
+ * One Recently viewed row. `item` is either the server's shape (kind +
+ * repo/paper fields) or a signed-out view from the extension's own queue
+ * (ids + display), normalized here.
+ */
+function recentItem(item, viewer) {
+  const isRepo = item.kind ? item.kind === "repo" : item.repositoryId != null;
+  if (isRepo) {
+    const repo = item.repo ?? { id: item.repositoryId, ...item.display };
+    const { button, picker } = bookmarkControl(repo.id, viewer);
+    const avatar = repo.avatarUrl && h("img", { class: "avatar", src: repo.avatarUrl, alt: "", width: 20, height: 20 });
+    if (avatar) avatar.addEventListener("error", () => avatar.remove());
+    return h(
+      "li",
+      {},
+      h(
+        "div",
+        { class: "row" },
+        h(
+          "div",
+          { class: "row-main" },
+          h("a", { class: "recent-title", href: repo.url, onclick: openHere(repo.url) }, avatar, repo.fullName),
+          h(
+            "div",
+            { class: "meta" },
+            `${formatAgo(item.viewedAt)} · `,
+            h("a", { href: repo.shadowgraphUrl, target: "_blank" }, "Shadowgraph"),
+          ),
+        ),
+        button,
+      ),
+      picker,
+    );
+  }
+  const paper = item.kind ? item : { source: item.paperSource, id: item.paperId, ...item.display };
+  return h(
+    "li",
+    {},
+    h("a", { class: "recent-title", href: paper.url, onclick: openHere(paper.url) }, paperIcon(), paper.title ?? paperLabel(paper)),
+    h(
+      "div",
+      { class: "meta" },
+      `${paperLabel(paper)} · ${formatAgo(item.viewedAt)} · `,
+      h("a", { href: paper.shadowgraphUrl, target: "_blank" }, "Shadowgraph"),
+    ),
+  );
+}
+
+let recentSeq = 0;
+
+/**
+ * Fills the Recently viewed tab: the account's history when signed in
+ * (uploading any signed-out views first, so they're included), otherwise
+ * the views this extension has queued locally.
+ */
+async function loadRecent() {
+  const seq = ++recentSeq;
+  if (!recent.firstChild) recent.replaceChildren(h("p", { class: "muted" }, "Loading…"));
+  try {
+    await uploadPendingViews().catch(() => {});
+    const { ok, body } = await fetchRecentlyViewed();
+    if (seq !== recentSeq) return;
+    if (ok) renderAccount(body.viewer);
+    const signedIn = ok && body.viewer.signedIn;
+    const items = signedIn ? body.items : await readPendingViews();
+    const viewer = signedIn ? body.viewer : { signedIn: false, savedRepoIds: [] };
+    if (seq !== recentSeq) return;
+    recent.replaceChildren(
+      items.length === 0
+        ? h("p", { class: "muted" }, "Nothing viewed yet.")
+        : h("ul", {}, items.map((item) => recentItem(item, viewer))),
+    );
+  } catch {
+    if (seq === recentSeq) recent.replaceChildren(h("p", { class: "muted" }, "Couldn't reach Shadowgraph."));
+  }
+}
+
+// Top-level tabs: "This page" (the paper/repo in the active tab) and
+// "Recently viewed". The choice is remembered across panel openings.
+const recent = document.getElementById("recent");
+const viewTabs = document.querySelectorAll("nav.tabs button");
+let activeView = "page";
+
+async function showView(view) {
+  activeView = view;
+  for (const b of viewTabs) b.setAttribute("aria-selected", String(b.dataset.view === view));
+  content.hidden = view !== "page";
+  recent.hidden = view !== "recent";
+  if (view === "recent") loadRecent();
+  await chrome.storage.local.set({ panelView: view });
+}
+for (const b of viewTabs) b.addEventListener("click", () => showView(b.dataset.view));
+const { panelView } = await chrome.storage.local.get("panelView");
+showView(panelView === "recent" ? "recent" : "page");
 
 // The panel stays open across navigations and tab switches, so it re-renders
 // for whatever the active tab in its own window is showing.
@@ -445,6 +582,8 @@ async function load(url, force = false) {
       renderAccount(body.viewer);
       if (page.kind === "paper") renderPaper(page, body);
       else renderRepo(body);
+      // The server records this view just after responding — give it a moment.
+      if (activeView === "recent") setTimeout(loadRecent, 1000);
     } else if (status === 404 && page.kind === "repo") {
       setMessage(
         "Not on Shadowgraph yet. ",

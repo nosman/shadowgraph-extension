@@ -157,10 +157,35 @@ function viewKey(view) {
   return view.repositoryId != null ? `repo:${view.repositoryId}` : `paper:${view.paperSource}:${view.paperId}`;
 }
 
-/** The view to remember for a page the API resolved, or null (a paper nobody cites isn't tracked). */
+const PAPER_URLS = {
+  arxiv: (id) => `https://arxiv.org/abs/${id}`,
+  acm: (id) => `https://dl.acm.org/doi/10.1145/${id}`,
+};
+
+/**
+ * The view to remember for a page the API resolved, or null (a paper nobody
+ * cites isn't tracked). `display` is what the panel's Recently viewed tab
+ * shows for it while signed out; it stays local — uploadPendingViews sends
+ * only the ids and time.
+ */
 export function viewFor(page, body) {
-  if (page.kind === "repo") return { repositoryId: body.repo.id };
-  return body.repos.length > 0 ? { paperSource: body.paper.source, paperId: body.paper.id } : null;
+  if (page.kind === "repo") {
+    const { id, fullName, url, avatarUrl, shadowgraphUrl } = body.repo;
+    return { repositoryId: id, display: { fullName, url, avatarUrl, shadowgraphUrl } };
+  }
+  if (body.repos.length === 0) return null;
+  const { source, id, title, shadowgraphUrl } = body.paper;
+  return { paperSource: source, paperId: id, display: { title, url: PAPER_URLS[source](id), shadowgraphUrl } };
+}
+
+/** Views recorded while signed out, newest first (for the panel's Recently viewed tab). */
+export async function readPendingViews() {
+  const { [PENDING_KEY]: pending = [] } = await chrome.storage.local.get(PENDING_KEY);
+  return pending;
+}
+
+export function fetchRecentlyViewed() {
+  return request("/api/extension/recently-viewed");
 }
 
 export async function queuePendingView(view) {
@@ -175,7 +200,8 @@ export async function queuePendingView(view) {
 export async function uploadPendingViews() {
   const { [PENDING_KEY]: pending = [] } = await chrome.storage.local.get(PENDING_KEY);
   if (pending.length === 0) return;
-  const { ok } = await request("/api/extension/views", { method: "POST", body: JSON.stringify({ views: pending }) });
+  const views = pending.map(({ repositoryId, paperSource, paperId, viewedAt }) => ({ repositoryId, paperSource, paperId, viewedAt }));
+  const { ok } = await request("/api/extension/views", { method: "POST", body: JSON.stringify({ views }) });
   if (!ok) return;
   // Keep anything re-queued while the upload was in flight.
   const sentAt = new Map(pending.map((v) => [viewKey(v), v.viewedAt]));

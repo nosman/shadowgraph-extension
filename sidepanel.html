@@ -9,7 +9,12 @@
       <a id="home" target="_blank">Shadowgraph</a>
       <span id="account"></span>
     </header>
-    <main id="content"><p class="muted">Loading…</p></main>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-view="page">This page</button>
+      <button type="button" role="tab" data-view="recent">Recently viewed</button>
+    </nav>
+    <main id="content" class="view"><p class="muted">Loading…</p></main>
+    <main id="recent" class="view" hidden></main>
     <script type="module" src="sidepanel.js"></script>
   </body>
 </html>
