@@ -444,6 +444,24 @@ function paperIcon() {
   return svg;
 }
 
+// Same favicons as the site's paper lists (PAPER_SOURCE_DOMAINS in src/lib/paperSources.ts).
+const PAPER_SOURCE_DOMAINS = { arxiv: "arxiv.org", nature: "nature.com", acm: "dl.acm.org", zenodo: "zenodo.org" };
+
+/** The paper source's favicon, falling back to a document icon if it can't load. */
+function paperFavicon(source) {
+  const domain = PAPER_SOURCE_DOMAINS[source];
+  if (!domain) return paperIcon();
+  const img = h("img", {
+    class: "recent-icon",
+    src: `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(domain)}`,
+    alt: "",
+    width: 20,
+    height: 20,
+  });
+  img.addEventListener("error", () => img.replaceWith(paperIcon()));
+  return img;
+}
+
 /** Opens `url` in the current tab — the panel then follows it to that repo or paper. */
 function openHere(url) {
   return (event) => {
@@ -490,7 +508,7 @@ function recentItem(item, viewer) {
   return h(
     "li",
     {},
-    h("a", { class: "recent-title", href: paper.url, onclick: openHere(paper.url) }, paperIcon(), paper.title ?? paperLabel(paper)),
+    h("a", { class: "recent-title", href: paper.url, onclick: openHere(paper.url) }, paperFavicon(paper.source), paper.title ?? paperLabel(paper)),
     h(
       "div",
       { class: "meta" },

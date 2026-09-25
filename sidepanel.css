@@ -161,5 +161,5 @@ table.mentions td.date { color: var(--muted); white-space: nowrap; padding-right
 .source-icon { display: block; width: 14px; height: 14px; margin-top: 1.5px; border-radius: 3px; }
 .source-icon.placeholder { background: var(--hover); }
 .show-more { display: block; margin: 8px auto 12px; }
-.recent-icon { width: 20px; height: 20px; vertical-align: -5px; margin-right: 6px; color: var(--muted); }
+.recent-icon { width: 20px; height: 20px; vertical-align: -5px; margin-right: 6px; border-radius: 4px; color: var(--muted); }
 .recent-title { font-weight: 600; overflow-wrap: anywhere; cursor: pointer; }
