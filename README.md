@@ -13,6 +13,10 @@ The toolbar badge shows the count of citing repos (papers) or similar repos (rep
 1. `chrome://extensions` → enable Developer mode → **Load unpacked** → pick this `extension/` directory.
 2. For local dev, open the extension's options and switch the server to `http://localhost:3000`.
 
+## Publishing
+
+`./scripts/package-extension.sh` builds the Chrome Web Store zip into `dist/`, without the localhost permission and options page used for development. Listing text, screenshots and dashboard answers are in `chrome-web-store/LISTING.md`.
+
 ## API
 
 Served by the Next app under `src/app/api/extension/`:
