@@ -606,6 +606,8 @@ async function load(url, force = false) {
       setMessage(
         "Not on Shadowgraph yet. ",
         h("a", { href: `${baseUrl}${shadowgraphRepoPath(page)}`, target: "_blank" }, "Add it"),
+        h("br"),
+        "Private repos aren't supported.",
       );
     } else {
       setMessage(`Couldn't load (${status}).`);
