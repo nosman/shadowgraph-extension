@@ -395,7 +395,114 @@ function similarSection(similar, viewer) {
   return h("section", { class: "split-section" }, heading, h("div", { class: "section-body" }, list, more));
 }
 
-function renderRepo({ repo, similar, mentions, viewer }) {
+/** One Scorecard score as a small chip, linked to the Scorecard viewer like the repo page's "OpenSSF Scorecard" link. */
+function scoreChip(label, value, url, decimals = 0) {
+  if (value == null) return null;
+  return h("a", { class: "chip", href: url, target: "_blank", rel: "noopener noreferrer" }, `${label} `, h("strong", {}, `${value.toFixed(decimals)}/10`));
+}
+
+/** The repo page's "Project health" card, condensed: Scorecard chips, then the published package's latest release and any warnings. */
+function healthBlock(health) {
+  if (!health) return null;
+  const { scorecard, package: pkg } = health;
+  const scores =
+    scorecard &&
+    h(
+      "div",
+      { class: "chips" },
+      scoreChip("Scorecard", scorecard.score, scorecard.url, 1),
+      scoreChip("Maintained", scorecard.maintained, scorecard.url),
+      scoreChip("Code review", scorecard.codeReview, scorecard.url),
+      scoreChip("Contributors", scorecard.contributors, scorecard.url),
+    );
+  const release = pkg && [
+    pkg.latestVersion && pkg.latestPublishedAt ? `${pkg.latestVersion} · ${formatDate(pkg.latestPublishedAt)}` : pkg.latestVersion,
+    pkg.releasesLastYear != null && `${pkg.releasesLastYear.toLocaleString()} ${pkg.releasesLastYear === 1 ? "release" : "releases"} this year`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const packageLine =
+    pkg &&
+    h(
+      "div",
+      { class: "meta" },
+      `${pkg.registry} `,
+      h("a", { class: "package", href: pkg.url, target: "_blank", rel: "noopener noreferrer" }, pkg.name),
+      release && ` · ${release}`,
+    );
+  const warnings =
+    pkg &&
+    (pkg.deprecated || pkg.advisoryCount > 0) &&
+    h(
+      "div",
+      { class: "chips" },
+      pkg.deprecated && h("span", { class: "chip danger" }, "Deprecated"),
+      pkg.advisoryCount > 0 &&
+        h("span", { class: "chip warning" }, `${pkg.advisoryCount} known ${pkg.advisoryCount === 1 ? "vulnerability" : "vulnerabilities"}`),
+    );
+  return h("div", { class: "detail" }, h("h2", {}, "Project health"), scores, packageLine, warnings);
+}
+
+// Avatars shown before the rest hide behind the "+N" chip.
+const STARGAZERS_VISIBLE = 6;
+
+// One shared tooltip, fixed-positioned so the scrolling .current block can't clip it.
+const tooltip = h("div", { class: "tooltip", role: "tooltip", hidden: true });
+document.body.append(tooltip);
+
+function withTooltip(el, text) {
+  const show = () => {
+    tooltip.textContent = text;
+    tooltip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const left = Math.max(4, Math.min(r.left + r.width / 2 - tooltip.offsetWidth / 2, window.innerWidth - tooltip.offsetWidth - 4));
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${r.bottom + 4}px`;
+  };
+  const hide = () => {
+    tooltip.hidden = true;
+  };
+  el.addEventListener("mouseenter", show);
+  el.addEventListener("mouseleave", hide);
+  el.addEventListener("focus", show);
+  el.addEventListener("blur", hide);
+  return el;
+}
+
+/** The repo page's "Significant stargazers" card as a wrap of avatars, each linked to the GitHub profile with the person's name as a tooltip. The top STARGAZERS_VISIBLE show; a "+N" chip reveals the rest loaded, and past those links to the repo's Shadowgraph page. */
+function stargazersBlock(result, repo) {
+  if (!result || result.stargazers.length === 0) return null;
+  const { stargazers, total } = result;
+  const avatars = stargazers.map((s) => {
+    const label = s.name || s.login;
+    const img = h("img", { src: s.avatarUrl, alt: "", width: 24, height: 24 });
+    img.addEventListener("error", () => img.replaceWith(h("span", { class: "placeholder" })));
+    return withTooltip(
+      h("a", { class: "stargazer", href: `https://github.com/${s.login}`, target: "_blank", rel: "noopener noreferrer", "aria-label": label }, img),
+      label,
+    );
+  });
+  const list = h("div", { class: "stargazers" });
+  const rest = total - stargazers.length;
+  const showAll = () => {
+    list.replaceChildren(
+      ...avatars,
+      rest > 0 && h("a", { class: "stargazer more", href: repo.shadowgraphUrl, target: "_blank" }, `+${rest.toLocaleString()}`),
+    );
+  };
+  if (stargazers.length > STARGAZERS_VISIBLE) {
+    const hidden = total - STARGAZERS_VISIBLE;
+    list.append(
+      ...avatars.slice(0, STARGAZERS_VISIBLE),
+      h("button", { type: "button", class: "stargazer more", onclick: showAll }, `+${hidden.toLocaleString()}`),
+    );
+  } else {
+    showAll();
+  }
+  return h("div", { class: "detail" }, h("h2", {}, `Significant stargazers (${total.toLocaleString()})`), list);
+}
+
+function renderRepo({ repo, similar, mentions, health, stargazers, viewer }) {
   const { button, picker } = bookmarkControl(repo.id, viewer);
   const current = h(
     "div",
@@ -407,11 +514,14 @@ function renderRepo({ repo, similar, mentions, viewer }) {
         "div",
         { class: "row-main" },
         repoName(repo),
-        repo.stars != null && h("div", { class: "meta" }, `★ ${formatCount(repo.stars)}`),
+        repo.stars != null && h("span", { class: "meta stars" }, `★ ${formatCount(repo.stars)}`),
       ),
       button,
     ),
     h("div", { style: "padding: 0 12px" }, picker),
+    // Absent from servers deployed before the panel showed them.
+    healthBlock(health),
+    stargazersBlock(stargazers, repo),
   );
   content.classList.add("split");
   content.replaceChildren(current, mentionsSection(mentions), similarSection(similar, viewer));
