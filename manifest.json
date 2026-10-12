@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Shadowgraph: GitHub Repo Mentions on Hacker News, Reddit & X",
   "short_name": "Shadowgraph",
-  "version": "0.2.2",
-  "description": "See the Hacker News, Reddit and X posts about the GitHub repo you're viewing, plus similar repos and the code behind arXiv papers.",
+  "version": "0.3.0",
+  "description": "Discover open source projects and see what people are saying about them across GitHub, Hugging Face and arXiv.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

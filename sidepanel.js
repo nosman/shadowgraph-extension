@@ -1,4 +1,5 @@
 import {
+  addRepo,
   detectPage,
   fetchFolders,
   fetchPage,
@@ -16,7 +17,6 @@ const account = document.getElementById("account");
 const BOOKMARK_PATH = "M18 7v14l-6-4-6 4V7a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4z";
 
 const baseUrl = await getBaseUrl();
-document.getElementById("home").href = baseUrl;
 
 /** Tiny element builder: h("a", { href }, "text", childNode). Strings become text nodes, never HTML. */
 function h(tag, attrs = {}, ...children) {
@@ -339,25 +339,29 @@ function mentionsSection(mentions) {
       "div",
       { class: "section-head" },
       heading,
-      sources.size > 1 &&
+      h(
+        "div",
+        { class: "controls" },
+        sources.size > 1 &&
+          segmented(
+            [["all", "All sources"], ...Object.entries(SOURCE_LABELS).filter(([key]) => sources.has(key))],
+            source,
+            (value) => {
+              source = value;
+              render();
+            },
+          ),
         segmented(
-          [["all", "All sources"], ...Object.entries(SOURCE_LABELS).filter(([key]) => sources.has(key))],
-          source,
+          [
+            ["chronological", "Newest first"],
+            ["points", "Most points"],
+          ],
+          sort,
           (value) => {
-            source = value;
+            sort = value;
             render();
           },
         ),
-      segmented(
-        [
-          ["chronological", "Newest first"],
-          ["points", "Most points"],
-        ],
-        sort,
-        (value) => {
-          sort = value;
-          render();
-        },
       ),
     ),
     h(
@@ -679,6 +683,7 @@ showView(panelView === "recent" ? "recent" : "page");
 // for whatever the active tab in its own window is showing.
 const windowId = (await chrome.windows.getCurrent()).id;
 let shownKey = null;
+let currentUrl = null;
 let loadSeq = 0;
 
 function pageKey(page) {
@@ -694,6 +699,7 @@ function pageKey(page) {
 async function load(url, force = false) {
   const page = url ? detectPage(url) : null;
   const key = pageKey(page);
+  currentUrl = url;
   if (!force && key === shownKey) return;
   shownKey = key;
   const seq = ++loadSeq;
@@ -713,18 +719,54 @@ async function load(url, force = false) {
       // The server records this view just after responding — give it a moment.
       if (activeView === "recent") setTimeout(loadRecent, 1000);
     } else if (status === 404 && page.kind === "repo") {
-      setMessage(
-        "Not on Shadowgraph yet. ",
-        h("a", { href: `${baseUrl}${shadowgraphRepoPath(page)}`, target: "_blank" }, "Add it"),
-        h("br"),
-        "Private repos aren't supported.",
-      );
+      if (body?.viewer) renderAccount(body.viewer);
+      if (page.host === "github") renderAddRepo(page, body?.viewer?.signedIn ?? false);
+      else
+        setMessage(
+          "Not on Shadowgraph yet. ",
+          h("a", { href: `${baseUrl}${shadowgraphRepoPath(page)}`, target: "_blank" }, "Add it"),
+          h("br"),
+          "Private repos aren't supported.",
+        );
     } else {
       setMessage(`Couldn't load (${status}).`);
     }
   } catch {
     if (seq === loadSeq) setMessage("Couldn't reach Shadowgraph.");
   }
+}
+
+/** A GitHub repo Shadowgraph doesn't have: a button that adds it, disabled until signed in. */
+function renderAddRepo(page, signedIn) {
+  const error = h("p", { class: "error" });
+  const button = h(
+    "button",
+    { class: "button primary", type: "button", disabled: !signedIn, title: signedIn ? null : "Sign in to add" },
+    "Add to Shadowgraph",
+  );
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    error.replaceChildren();
+    try {
+      const { ok, status } = await addRepo(page);
+      if (ok) return load(currentUrl, true);
+      error.append(status === 404 ? "Couldn't add: private repos aren't supported." : `Couldn't add (${status}).`);
+    } catch {
+      error.append("Couldn't reach Shadowgraph.");
+    }
+    button.disabled = false;
+  });
+  content.classList.remove("split");
+  content.replaceChildren(
+    h(
+      "div",
+      { class: "add" },
+      h("p", { class: "muted" }, "Not on Shadowgraph yet."),
+      button,
+      !signedIn && h("p", { class: "muted" }, h("a", { href: `${baseUrl}/login`, target: "_blank" }, "Sign in"), " to add it."),
+      error,
+    ),
+  );
 }
 
 async function loadActiveTab(force) {

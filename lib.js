@@ -128,6 +128,14 @@ export function fetchPage(page) {
   return request(`/api/extension/repo?owner=${encodeURIComponent(page.owner)}&name=${encodeURIComponent(page.name)}${hf}`);
 }
 
+/** Adds a GitHub repo Shadowgraph doesn't have yet (signed in only). */
+export function addRepo(page) {
+  return request("/api/extension/repo", {
+    method: "POST",
+    body: JSON.stringify({ owner: page.owner, name: page.name }),
+  });
+}
+
 export function fetchFolders(repositoryId) {
   return request(`/api/extension/folders?repositoryId=${repositoryId}`);
 }

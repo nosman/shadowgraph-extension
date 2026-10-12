@@ -53,32 +53,10 @@ body {
 body.options { width: auto; height: auto; padding: 16px; display: flex; flex-direction: row; gap: 8px; align-items: center; }
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
-header {
-  flex: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-}
-/* The site header's bordered logo chip. */
-#home {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px 3px 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-#home img { width: 18px; height: 18px; border-radius: 4px; }
-#home:hover { text-decoration: none; border-color: var(--muted); }
-#account { font-weight: 500; }
+#account { flex: none; display: flex; font-weight: 500; }
 #account a {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 5px 10px;
   border: 1px solid var(--accent);
   border-radius: 6px;
   color: var(--accent-fg);
@@ -91,6 +69,8 @@ main.view.split { display: flex; flex-direction: column; overflow: hidden; paddi
 .split-section.empty { flex: none; }
 .section-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px 6px; }
 .section-head h2 { margin: 0; margin-right: auto; }
+/* Wraps below the heading as one unit, so a narrow panel doesn't split the filter and sort onto separate lines. */
+.section-head .controls { display: flex; flex-wrap: wrap; gap: 6px 8px; }
 /* The site's page headings: an accent-colored rule on the left. */
 .section-head h2 { border-left: 2px solid var(--accent); padding-left: 6px; }
 .section-body { flex: 1; min-height: 0; overflow: auto; }
@@ -187,6 +167,9 @@ button.stargazer.more { border: none; font: inherit; font-size: 11px; cursor: po
   color: var(--fg);
   cursor: pointer;
 }
+.add .button { margin: 0 12px; }
+.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.button:disabled { opacity: 0.5; cursor: default; }
 .picker button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .error { color: var(--danger); font-size: 12px; margin-top: 4px; }
 .segmented { display: inline-flex; padding: 2px; border-radius: 6px; background: var(--hover); }
