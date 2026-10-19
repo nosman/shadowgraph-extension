@@ -750,7 +750,13 @@ function renderAddRepo(page, signedIn) {
     try {
       const { ok, status } = await addRepo(page);
       if (ok) return load(currentUrl, true);
-      error.append(status === 404 ? "Couldn't add: private repos aren't supported." : `Couldn't add (${status}).`);
+      error.append(
+        status === 404
+          ? "Couldn't add: private repos aren't supported."
+          : status === 429
+            ? "You've reached today's limit for adding repos."
+            : `Couldn't add (${status}).`,
+      );
     } catch {
       error.append("Couldn't reach Shadowgraph.");
     }
