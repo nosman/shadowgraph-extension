@@ -184,39 +184,28 @@ button.stargazer.more { border: none; font: inherit; font-size: 11px; cursor: po
   cursor: pointer;
 }
 .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
-table.mentions { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
-table.mentions th {
-  position: sticky;
-  top: 0;
-  background: var(--bg);
-  text-align: left;
-  font-weight: 600;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border);
-}
-/* border-box: 12px gutter + 14px icon + 4px, plus the message cell's own 4px = an 8px gap. */
-table.mentions th:first-child, table.mentions td:first-child { width: 30px; padding-left: 12px; padding-right: 4px; }
-table.mentions th:nth-child(3) { width: 44px; }
-table.mentions th:nth-child(4) { width: 96px; padding-right: 12px; text-align: right; }
-table.mentions td { padding: 5px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
-table.mentions tr:hover td { background: var(--row-hover); }
-.message { min-width: 0; }
-.mention-link { display: block; color: inherit; }
-.mention-link:hover .mention-title { text-decoration: underline; }
-.mention-link:hover { text-decoration: none; }
-.mention-title {
-  display: block;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mention-snippet { display: block; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-td.num { font-variant-numeric: tabular-nums; }
-/* table.mentions-qualified to outrank `table.mentions td`'s padding. */
-table.mentions td.date { color: var(--muted); white-space: nowrap; padding-right: 12px; text-align: right; }
-/* margin-top centers it on the first (title) line: 12px text at line-height 1.4. */
-.source-icon { display: block; width: 14px; height: 14px; margin-top: 1.5px; border-radius: 3px; }
+/* One mention, as the repo page lists it (MentionPostItem, compact). */
+.post { display: flex; gap: 8px; align-items: flex-start; padding: 6px 12px; }
+.post:hover { background: var(--row-hover); }
+.post-icon { flex: none; width: 20px; height: 20px; display: grid; place-items: center; }
+.post-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.post-headline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-height: 20px; }
+.post-avatar-link { display: inline-flex; }
+.post-avatar { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--hover); object-fit: cover; }
+.post-avatar.placeholder { display: grid; place-items: center; font-size: 9px; font-weight: 600; color: var(--muted); }
+.post-author { font-weight: 600; color: var(--fg); }
+.top-developer { display: inline-flex; margin-left: -2px; color: var(--accent-fg); }
+.top-developer svg { width: 15px; height: 15px; }
+.post-stats { font-size: 12px; color: var(--muted); }
+.post-body { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.post-secondary { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-secondary a { text-decoration: underline; }
+.post-secondary code { font-size: 11px; padding: 0 3px; border-radius: 3px; background: var(--hover); }
+.pager { display: flex; gap: 4px; padding: 6px 8px 12px; }
+.pager-button { font: inherit; padding: 4px 8px; border: none; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+.pager-button:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+.pager-button:disabled { opacity: 0.5; cursor: default; }
+.source-icon { display: block; width: 14px; height: 14px; border-radius: 3px; }
 .source-icon.placeholder { background: var(--hover); }
 .show-more { display: block; margin: 8px auto 12px; }
 .recent-icon { width: 20px; height: 20px; vertical-align: -5px; margin-right: 6px; border-radius: 4px; color: var(--muted); }

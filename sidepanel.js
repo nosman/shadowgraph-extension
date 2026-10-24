@@ -220,7 +220,7 @@ function renderPaper(page, { paper, repos, viewer }) {
   );
 }
 
-// Same source icons as the repo page's SocialMentionsTable: HN's favicon
+// Same source icons as the repo page's mentions (MentionPostItem): HN's favicon
 // (via Google's favicon service, like the site's Favicon component) and
 // Tabler's brand-reddit / brand-x outlines, drawn inline so they take the
 // text color in both themes. Tabler Icons, MIT License.
@@ -266,26 +266,137 @@ function sourceIcon(source) {
   return svg;
 }
 
-function mentionRow(m) {
+// Tabler's award (filled), the site's top-developer mark (MIT License).
+const AWARD_PATHS = [
+  "M19.496 13.983l1.966 3.406a1.001 1.001 0 0 1 -.705 1.488l-.113 .011l-.112 -.001l-2.933 -.19l-1.303 2.636a1.001 1.001 0 0 1 -1.608 .26l-.082 -.094l-.072 -.11l-1.968 -3.407a8.994 8.994 0 0 0 6.93 -3.999z",
+  "M11.43 17.982l-1.966 3.408a1.001 1.001 0 0 1 -1.622 .157l-.076 -.1l-.064 -.114l-1.304 -2.635l-2.931 .19a1.001 1.001 0 0 1 -1.022 -1.29l.04 -.107l.05 -.1l1.968 -3.409a8.994 8.994 0 0 0 6.927 4.001z",
+  "M12 2l.24 .004a7 7 0 0 1 6.76 6.996l-.003 .193l-.007 .192l-.018 .245l-.026 .242l-.024 .178a6.985 6.985 0 0 1 -.317 1.268l-.116 .308l-.153 .348a7.001 7.001 0 0 1 -12.688 -.028l-.13 -.297l-.052 -.133l-.08 -.217l-.095 -.294a6.96 6.96 0 0 1 -.093 -.344l-.06 -.271l-.049 -.271l-.02 -.139l-.039 -.323l-.024 -.365l-.006 -.292a7 7 0 0 1 6.76 -6.996l.24 -.004z",
+];
+
+function awardIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "currentColor");
+  for (const d of AWARD_PATHS) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+const POINTS_LABELS = { hackernews: "points", twitter: "likes", reddit: "points" };
+
+// Mentions per page; "Show all" drops paging. Same as the repo page.
+const MENTIONS_PAGE_SIZE = 5;
+
+// Post text runs its lines together, so a clamp fills its lines and its
+// "…" ends real text, not a line break.
+function oneLine(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+// X returns &, < and > HTML-escaped.
+function decodeEntities(text) {
+  return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+/** Where a post's author's profile is, and how their name reads on that site. */
+function authorProfile(source, author) {
+  if (source === "hackernews") return { href: `https://news.ycombinator.com/user?id=${encodeURIComponent(author)}`, label: author };
+  if (source === "twitter") return { href: `https://x.com/${encodeURIComponent(author)}`, label: `@${author}` };
+  const name = author.replace(/^\/?u\//, "");
+  return { href: `https://www.reddit.com/user/${encodeURIComponent(name)}`, label: `u/${name}` };
+}
+
+const REDDIT_INLINE_RE = /\[([^\]]*)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|`([^`]+)`|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_/g;
+
+/**
+ * A Reddit post's markdown body, inline — links, bold, italics,
+ * strikethrough and code; anything block-level keeps just its text, as on
+ * the repo page. A link the snippet's cut-off left unclosed shows as its
+ * text; a relative one (/r/…, /u/…) goes to Reddit.
+ */
+function redditMarkdown(text) {
+  const closed = text.replace(/\[([^\]]*)\]\([^)]*$/, "$1…").replace(/^(#{1,6}|>|[-*+]|\d+\.)\s+/, "");
+  const nodes = [];
+  let last = 0;
+  for (const m of closed.matchAll(REDDIT_INLINE_RE)) {
+    nodes.push(closed.slice(last, m.index));
+    last = m.index + m[0].length;
+    const [, linkText, href, bold, bold2, del, code, em, em2] = m;
+    if (href != null) {
+      const url = href.startsWith("/") ? `https://www.reddit.com${href}` : href;
+      nodes.push(/^https?:\/\//i.test(url) ? h("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, linkText) : linkText);
+    } else if (bold ?? bold2) nodes.push(h("strong", {}, bold ?? bold2));
+    else if (del) nodes.push(h("del", {}, del));
+    else if (code) nodes.push(h("code", {}, code));
+    else nodes.push(h("em", {}, em ?? em2));
+  }
+  nodes.push(closed.slice(last));
+  return nodes;
+}
+
+function avatarInitials(name) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+}
+
+/** The poster's GitHub avatar, linked to their profile, with initials when there's no image. */
+function githubAvatar(user) {
+  const label = user.name || user.login;
+  const placeholder = () => h("span", { class: "post-avatar placeholder" }, avatarInitials(label));
+  let avatar = placeholder();
+  if (user.avatarUrl) {
+    avatar = h("img", { class: "post-avatar", src: user.avatarUrl, alt: user.login });
+    avatar.addEventListener("error", () => avatar.replaceWith(placeholder()));
+  }
+  return withTooltip(
+    h("a", { class: "post-avatar-link", href: `https://github.com/${user.login}`, target: "_blank", rel: "noopener noreferrer" }, avatar),
+    `${label} on GitHub`,
+  );
+}
+
+/**
+ * One mention as the repo page lists it (MentionPostItem, compact): the
+ * poster — their GitHub avatar and top-developer mark when known — with
+ * score and date, then the post's text, then the story an HN comment was
+ * on or the post's snippet.
+ */
+function mentionItem(m) {
   // `content` is the headline in the repo page's own rows (toMentionRows);
   // servers deployed before that sent it as `title`.
-  const headline = m.content ?? m.title;
+  const content = m.content ?? m.title;
+  const text = m.source === "twitter" ? decodeEntities(content) : content;
+  const body = m.isComment ? (m.snippet ?? "") : text;
+  const snippet = m.snippet && oneLine(m.snippet);
+  const profile = m.author ? authorProfile(m.source, m.author) : null;
+  const user = m.githubUser;
   return h(
-    "tr",
-    {},
-    h("td", {}, sourceIcon(m.source)),
+    "div",
+    { class: "post" },
+    h("div", { class: "post-icon" }, sourceIcon(m.source)),
     h(
-      "td",
-      { class: "message" },
+      "div",
+      { class: "post-main" },
       h(
-        "a",
-        { class: "mention-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
-        h("span", { class: "mention-title" }, headline),
-        m.snippet && h("span", { class: "mention-snippet" }, m.snippet),
+        "div",
+        { class: "post-headline" },
+        user && githubAvatar(user),
+        profile && h("a", { class: "post-author", href: profile.href, target: "_blank", rel: "noopener noreferrer" }, profile.label),
+        user?.topDeveloper && withTooltip(h("span", { class: "top-developer", "aria-label": "Top developer" }, awardIcon()), `Top developer · ${user.login} on GitHub`),
+        h("span", { class: "post-stats" }, `${m.points.toLocaleString()} ${POINTS_LABELS[m.source]} · ${formatDate(m.postedAt)}`),
       ),
+      h("a", { class: "post-body", href: m.url, target: "_blank", rel: "noopener noreferrer" }, oneLine(body)),
+      m.isComment
+        ? h("div", { class: "post-secondary" }, `on ${content}`)
+        : snippet && h("div", { class: "post-secondary" }, m.source === "reddit" ? redditMarkdown(snippet) : snippet),
     ),
-    h("td", { class: "num" }, m.points.toLocaleString()),
-    h("td", { class: "date" }, formatDate(m.postedAt)),
   );
 }
 
@@ -314,7 +425,7 @@ function segmented(options, value, onChange) {
   return group;
 }
 
-/** The top half of a repo's split view: the repo page's "See what people are saying" table, sized for the panel — source filter (offering only sources that have mentions, and only when there's more than one), sort, and one row per mention. */
+/** The top half of a repo's split view: the repo page's "See what people are saying" list (SocialMentionsList), sized for the panel — source filter (only when more than one source has mentions), sort, five mentions a page with Previous / Next / Show all. */
 function mentionsSection(mentions) {
   const heading = h("h2", {}, `Mentions (${mentions.length})`);
   if (mentions.length === 0) {
@@ -322,12 +433,33 @@ function mentionsSection(mentions) {
   }
   let source = "all";
   let sort = "chronological";
-  const body = h("tbody");
+  // A page index, or "all" once Show all is clicked.
+  let page = 0;
+  const body = h("div", { class: "section-body" });
   const render = () => {
     const rows = (source === "all" ? mentions : mentions.filter((m) => m.source === source))
       .slice()
       .sort((a, b) => (sort === "points" ? b.points - a.points : new Date(b.postedAt) - new Date(a.postedAt)));
-    body.replaceChildren(...rows.map(mentionRow));
+    const pageStart = page === "all" ? 0 : page * MENTIONS_PAGE_SIZE;
+    const visible = page === "all" ? rows : rows.slice(pageStart, pageStart + MENTIONS_PAGE_SIZE);
+    const hasPrevious = page !== "all" && page > 0;
+    const hasNext = page !== "all" && pageStart + MENTIONS_PAGE_SIZE < rows.length;
+    const go = (next) => {
+      page = next;
+      render();
+      body.scrollTop = 0;
+    };
+    body.replaceChildren(
+      ...visible.map(mentionItem),
+      (hasPrevious || hasNext) &&
+        h(
+          "div",
+          { class: "pager" },
+          h("button", { type: "button", class: "pager-button", disabled: !hasPrevious, onclick: () => go(page - 1) }, "‹ Previous"),
+          h("button", { type: "button", class: "pager-button", disabled: !hasNext, onclick: () => go(page + 1) }, "Next ›"),
+          h("button", { type: "button", class: "pager-button", onclick: () => go("all") }, `Show all ${rows.length.toLocaleString()}`),
+        ),
+    );
   };
   render();
 
@@ -348,6 +480,7 @@ function mentionsSection(mentions) {
             source,
             (value) => {
               source = value;
+              page = 0;
               render();
             },
           ),
@@ -359,21 +492,13 @@ function mentionsSection(mentions) {
           sort,
           (value) => {
             sort = value;
+            page = 0;
             render();
           },
         ),
       ),
     ),
-    h(
-      "div",
-      { class: "section-body" },
-      h(
-        "table",
-        { class: "mentions" },
-        h("thead", {}, h("tr", {}, h("th", { "aria-label": "Source" }), h("th", {}, "Message"), h("th", {}, "Score"), h("th", {}, "Date"))),
-        body,
-      ),
-    ),
+    body,
   );
 }
 
